@@ -15,9 +15,13 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.awt.ComposeWindow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
@@ -33,11 +37,20 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import java.net.URI
 import java.net.URL
+import java.util.Optional
+import kotlin.math.abs
+import kotlin.time.Duration.Companion.minutes
+import androidx.compose.ui.input.key.*
 
 data class Player(
     val name: String,
     val guid: String,
     val kills: Int,
+    var sessionKills: Int,
+    var sessionDeaths: Int,
+    var sessionHeadshots: Int,
+    var sessionDamage: Double,
+    var sessionHours: Double,
     val damageDealt: Double,
     val deaths: Int,
     val playtimeHours: Double,
@@ -55,9 +68,11 @@ data class StatsResponse(
 
 private const val STATS_API_URL = "https://gtg-arma.de/api/stats"
 
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 @Preview
 fun app() {
+    var firstStats: Optional<Player> by remember { mutableStateOf(Optional.empty()) }
     var playerStats by remember { mutableStateOf<List<Player>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
@@ -72,13 +87,21 @@ fun app() {
                 println(e)
             }
 
-            delay(10000)
+            delay(5.minutes.inWholeMilliseconds)
         }
     }
 
     // Find a specific player - modify this to find your player of interest
     val playerName = "Gianni" // Change this to the player you want to track
     val playerData = playerStats.find { it.name == playerName }
+
+    if(firstStats.isEmpty) firstStats = Optional.ofNullable(playerData)
+
+    playerData?.sessionKills        = abs(firstStats.get().kills - playerData.kills)
+    playerData?.sessionDeaths       = abs(firstStats.get().deaths - playerData.deaths)
+    playerData?.sessionDamage       = abs(firstStats.get().damageDealt - playerData.damageDealt)
+    playerData?.sessionHours        = abs(firstStats.get().playtimeHours - playerData.playtimeHours)
+    playerData?.sessionHeadshots    = abs(firstStats.get().headshots - playerData.headshots)
 
     Box(
         modifier = Modifier
@@ -91,9 +114,10 @@ fun app() {
             isLoading -> Text("Loading stats...")
             errorMessage != null -> Text(errorMessage!!)
             playerData != null -> Text(
-                text = """Kills: ${playerData.kills}
-                    |Deaths: ${playerData.deaths}
-                    |Headshots: ${playerData.headshots}
+                text = """
+                    |Kills: ${playerData.kills} | ${playerData.sessionKills}
+                    |Deaths: ${playerData.deaths} | ${playerData.sessionDeaths}
+                    |Headshots: ${playerData.headshots} | ${playerData.sessionHeadshots}
                 """.trimMargin(),
                 color = Color.Green,
                 modifier = Modifier.padding(top = 20.dp, end = 10.dp)
@@ -118,7 +142,7 @@ fun main() = application {
         state = rememberWindowState(
             placement = WindowPlacement.Floating,
             position = WindowPosition(alignment = Alignment.TopEnd),
-            size = DpSize(100.dp, 300.dp)
+            size = DpSize(120.dp, 300.dp)
         ),
         transparent = true,
         alwaysOnTop = true,
